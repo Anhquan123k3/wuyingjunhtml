@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nền Tảng Thi HSK Tổng Hợp</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+        }
+        .card {
+            background-color: white;
+            border-radius: 12px;
+            box-shadow: 0 4px HSK_doc_dungsai.xlsx rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+        .btn {
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        .btn-primary {
+            background-color: #1d4ed8;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #1e40af;
+        }
+        .btn-secondary {
+            background-color: #e5e7eb;
+            color: #374151;
+        }
+        .btn-secondary:hover {
+            background-color: #d1d5db;
+        }
+        .btn-disabled {
+            background-color: #9ca3af;
+            cursor: not-allowed;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #1d4ed8;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .recording-indicator {
+            width: 16px;
+            height: 16px;
+            background-color: #ef4444;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+    </style>
+</head>
+<body class="antialiased text-gray-800">
+
+    <div id="app" class="container mx-auto p-4 md:p-8 max-w-7xl">
+
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex-col items-center justify-center z-50 hidden">
+            <div class="loader"></div>
+            <p id="loading-text" class="text-white text-xl mt-4">Đang xử lý...</p>
+        </div>
+        
+        <!-- Welcome Screen -->
+        <div id="welcome-screen" class="card p-8 text-center">
+            <h1 class="text-4xl font-bold text-gray-800 mb-4">Luyện Thi HSK Tổng Hợp</h1>
+            <p class="text-gray-600 mb-8 max-w-2xl mx-auto">Tải lên tệp .zip chứa ngân hàng câu hỏi (các tệp .xlsx) để bắt đầu bài thi toàn diện 4 kỹ năng. Thời gian làm bài là 120 phút.</p>
+            
+            <div class="max-w-md mx-auto">
+                 <div class="flex items-center justify-center w-full">
+                    <label for="zip-file-input" class="flex flex-col items-center justify-center w-full h-48 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                        <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                            <svg class="w-10 h-10 mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                            <p class="mb-2 text-sm text-gray-500"><span class="font-semibold">Nhấn để tải lên</span> hoặc kéo thả</p>
+                            <p class="text-xs text-gray-500">Tệp ZIP (chứa các file .xlsx)</p>
+                        </div>
+                        <input id="zip-file-input" type="file" class="hidden" accept=".zip"/>
+                    </label>
+                </div> 
+                <p id="file-status" class="mt-4 text-sm text-gray-500">Chưa có tệp nào được chọn.</p>
+            </div>
+
+            <button id="start-btn" class="btn btn-primary mt-8 btn-disabled" disabled>Bắt đầu làm bài</button>
+        </div>
+
+        <!-- Test Screen -->
+        <div id="test-screen" class="hidden">
+            <div class="flex flex-col md:flex-row gap-8">
+                <!-- Navigation -->
+                <div class="md:w-1/4">
+                    <div class="card p-4 sticky top-8">
+                        <h3 class="font-bold text-lg mb-4">Danh mục bài thi</h3>
+                        <ul id="test-navigation" class="space-y-1">
+                           <!-- Navigation items will be generated here -->
+                        </ul>
+                        <div class="mt-6 border-t pt-4">
+                            <p class="text-sm font-semibold">Thời gian còn lại:</p>
+                            <p id="timer" class="text-2xl font-bold text-blue-700">120:00</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Question Area -->
+                <div class="md:w-3/4">
+                    <div class="card p-6 md:p-8">
+                        <div id="question-header" class="mb-6 pb-4 border-b">
+                             <h2 id="section-title" class="text-2xl font-bold"></h2>
+                             <p id="question-counter" class="text-gray-500 mt-1"></p>
+                        </div>
+                        <div id="question-content" class="min-h-[300px] space-y-6">
+                            <!-- Question content will be rendered here -->
+                        </div>
+                        <div id="navigation-buttons" class="mt-8 flex justify-between items-center border-t pt-6">
+                            <button id="prev-btn" class="btn btn-secondary">Câu trước</button>
+                            <button id="next-btn" class="btn btn-primary">Câu tiếp</button>
+                            <button id="submit-btn" class="btn btn-primary bg-green-600 hover:bg-green-700 hidden">Nộp bài</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Results Screen -->
+        <div id="results-screen" class="hidden card p-8">
+             <h1 class="text-4xl font-bold text-center text-gray-800 mb-8">Kết quả bài thi</h1>
+             <div id="results-summary" class="text-center mb-10"></div>
+             <div id="results-details" class="space-y-6"></div>
+             <div class="text-center mt-10">
+                 <button id="restart-btn" class="btn btn-primary">Làm bài thi khác</button>
+             </div>
+        </div>
+    </div>
+
+    <script>
+    // ===================================================================================
+    // Cấu hình và Trạng thái chung
+    // ===================================================================================
+    const appState = {
+        apiKey: "AIzaSyCW7ZqVo2u9MmRutETXw-fpQCkM5sgeVXQ", // QUAN TRỌNG: API key của bạn
+        allQuestions: {},
+        testData: {},
+        userAnswers: {},
+        scores: {},
+        currentSection: null,
+        currentQuestionIndex: 0,
+        mediaRecorder: null,
+        audioChunks: [],
+        timerInterval: null,
+    };
+
+    const UI = {
+        welcomeScreen: document.getElementById('welcome-screen'),
+        testScreen: document.getElementById('test-screen'),
+        resultsScreen: document.getElementById('results-screen'),
+        loadingOverlay: document.getElementById('loading-overlay'),
+        loadingText: document.getElementById('loading-text'),
+        zipInput: document.getElementById('zip-file-input'),
+        fileStatus: document.getElementById('file-status'),
+        startBtn: document.getElementById('start-btn'),
+        testNav: document.getElementById('test-navigation'),
+        sectionTitle: document.getElementById('section-title'),
+        qCounter: document.getElementById('question-counter'),
+        qContent: document.getElementById('question-content'),
+        prevBtn: document.getElementById('prev-btn'),
+        nextBtn: document.getElementById('next-btn'),
+        submitBtn: document.getElementById('submit-btn'),
+        timer: document.getElementById('timer'),
+        restartBtn: document.getElementById('restart-btn'),
+    };
+
+    const FILE_CONFIG = {
+        'nghe1': { name: 'HSK_nghe_pinyin.xlsx', count: 7, type: 'listening' },
+        'nghe2': { name: 'HSK_nghe_chon.xlsx', count: 5, type: 'listening' },
+        'nghe3': { name: 'HSK_nghe_dungsai.xlsx', count: 5, type: 'listening' },
+        'noi1': { name: 'HSK_noi_nhaclai.xlsx', count: 5, type: 'speaking' },
+        'noi2': { name: 'HSK_noi_doan.xlsx', count: 5, type: 'speaking' },
+        'doc1': { name: '选词填空.xlsx', count: 10, type: 'reading' },
+        'doc2': { name: 'HSK2_doc_hieu.xlsx', count: 3, type: 'reading' },
+        'doc3': { name: 'HSK_doc_dungsai.xlsx', count: 3, type: 'reading' },
+        'viet1': { name: 'HSK_viet_dientu.xlsx', count: 5, type: 'writing' },
+        'viet2': { name: 'HSK_viet_sapxep.xlsx', count: 5, type: 'writing' },
+        'viet3': { name: 'HSK_viet_doanvan.xlsx', count: 1, type: 'writing' },
+    };
+
+    const SECTION_TITLES = {
+        'nghe1': 'Phần Nghe 1: Chọn phiên âm',
+        'nghe2': 'Phần Nghe 2: Chọn đáp án',
+        'nghe3': 'Phần Nghe 3: Đúng sai',
+        'noi1': 'Phần Nói 1: Nhắc lại',
+        'noi2': 'Phần Nói 2: Đọc đoạn văn',
+        'doc1': 'Phần Đọc 1: Chọn từ điền câu',
+        'doc2': 'Phần Đọc 2: Đọc hiểu chọn đáp án',
+        'doc3': 'Phần Đọc 3: Đọc hiểu đúng sai',
+        'viet1': 'Phần Viết 1: Điền từ',
+        'viet2': 'Phần Viết 2: Sắp xếp câu',
+        'viet3': 'Phần Viết 3: Viết đoạn văn',
+    };
+    
+    // ===================================================================================
+    // Hàm tiện ích
+    // ===================================================================================
+    const shuffleArray = (array) => {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
+    };
+    
+    const roundScore = (score) => Math.round(score * 4) / 4;
+    
+    const showLoading = (text = 'Đang xử lý...') => {
+        UI.loadingText.textContent = text;
+        UI.loadingOverlay.classList.remove('hidden');
+        UI.loadingOverlay.classList.add('flex');
+    };
+
+    const hideLoading = () => {
+        UI.loadingOverlay.classList.add('hidden');
+        UI.loadingOverlay.classList.remove('flex');
+    };
+
+    function base64ToArrayBuffer(base64) {
+        const binaryString = window.atob(base64);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+        return bytes.buffer;
+    }
+
+    function pcmToWav(pcmData, sampleRate) {
+        const numChannels = 1;
+        const bitsPerSample = 16;
+        const byteRate = sampleRate * numChannels * bitsPerSample / 8;
+        const blockAlign = numChannels * bitsPerSample / 8;
+        const dataSize = pcmData.length * pcmData.BYTES_PER_ELEMENT;
+        const buffer = new ArrayBuffer(44 + dataSize);
+        const view = new DataView(buffer);
+        function writeString(view, offset, string) {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        }
+        writeString(view, 0, 'RIFF');
+        view.setUint32(4, 36 + dataSize, true);
+        writeString(view, 8, 'WAVE');
+        writeString(view, 12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, numChannels, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, byteRate, true);
+        view.setUint16(32, blockAlign, true);
+        view.setUint16(34, bitsPerSample, true);
+        writeString(view, 36, 'data');
+        view.setUint32(40, dataSize, true);
+        const pcm16 = new Int16Array(pcmData.buffer);
+        for (let i = 0; i < pcm16.length; i++) {
+            view.setInt16(44 + i * 2, pcm16[i], true);
+        }
+        return new Blob([view], { type: 'audio/wav' });
+    }
+    
+    // ===================================================================================
+    // Tích hợp AI (Gemini)
+    // ===================================================================================
+    async function callGeminiAPI(prompt, systemInstruction = "") {
+        if (!appState.apiKey) {
+            console.error("API key for Gemini is missing.");
+            throw new Error("API key is missing.");
+        }
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${appState.apiKey}`;
+        
+        const payload = { contents: [{ parts: [{ text: prompt }] }] };
+        if (systemInstruction) {
+            payload.systemInstruction = { parts: [{ text: systemInstruction }] };
+        }
+
+        for (let i = 0; i < 3; i++) { // Retry logic
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (response.ok) {
+                    const result = await response.json();
+                    const text = result.candidates[0]?.content?.parts[0]?.text;
+                    if (text) return text;
+                }
+            } catch (error) {
+                console.error("API call error:", error);
+            }
+            await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, i)));
+        }
+        throw new Error('API call failed after multiple retries.');
+    }
+
+    async function generateAudio(text, elementId) {
+        const button = document.getElementById(elementId);
+        if (button.dataset.audioUrl) {
+            new Audio(button.dataset.audioUrl).play();
+            return;
+        }
+        if (!appState.apiKey) {
+            alert("Vui lòng cung cấp API key của Google Gemini.");
+            return;
+        }
+        
+        button.disabled = true;
+        button.innerHTML = `<span class="loader-small inline-block border-2 border-white border-t-transparent rounded-full w-4 h-4 animate-spin"></span> Đang tạo...`;
+        
+        try {
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${appState.apiKey}`;
+            const payload = {
+                contents: [{ parts: [{ text: `TTS the following text in chinese: ${text}` }] }],
+                generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } } },
+                model: "gemini-2.5-flash-preview-tts"
+            };
+            const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const result = await response.json();
+            const part = result?.candidates?.[0]?.content?.parts?.[0];
+            if (part?.inlineData?.data) {
+                const sampleRate = parseInt((part.inlineData.mimeType.match(/rate=(\d+)/) || [])[1] || 24000);
+                const pcm16 = new Int16Array(base64ToArrayBuffer(part.inlineData.data));
+                const audioUrl = URL.createObjectURL(pcmToWav(pcm16, sampleRate));
+                button.dataset.audioUrl = audioUrl;
+                new Audio(audioUrl).play();
+            } else {
+                throw new Error("Không nhận được dữ liệu âm thanh hợp lệ.");
+            }
+        } catch (error) {
+            console.error("Lỗi khi tạo audio:", error);
+            alert("Đã xảy ra lỗi khi tạo file âm thanh.");
+        } finally {
+            button.disabled = false;
+            button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 mr-2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>Phát âm thanh`;
+        }
+    }
+
+    // ===================================================================================
+    // Xử lý tệp và Khởi tạo bài thi
+    // ===================================================================================
+    const handleZipUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        showLoading('Đang đọc ngân hàng đề...');
+        UI.fileStatus.textContent = `Đã chọn: ${file.name}`;
+        try {
+            const zip = await JSZip.loadAsync(file);
+            const requiredFiles = Object.values(FILE_CONFIG).map(f => f.name);
+            const filesInZip = Object.keys(zip.files).filter(path => !path.endsWith('/'));
+            const missingFiles = requiredFiles.filter(reqFile => !filesInZip.some(zipPath => zipPath.endsWith(reqFile)));
+            if (missingFiles.length > 0) {
+                throw new Error(`Thiếu các tệp: ${missingFiles.join(', ')}`);
+            }
+            const promises = Object.entries(FILE_CONFIG).map(([key, config]) => {
+                const filePath = filesInZip.find(path => path.endsWith(config.name));
+                return zip.file(filePath).async('arraybuffer').then(content => ({ key, content }));
+            });
+            const fileContents = await Promise.all(promises);
+            for (const { key, content } of fileContents) {
+                const workbook = XLSX.read(content, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                appState.allQuestions[key] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+            }
+            UI.startBtn.disabled = false;
+            UI.startBtn.classList.remove('btn-disabled');
+            UI.fileStatus.textContent = 'Đã tải lên thành công. Sẵn sàng để bắt đầu!';
+        } catch (error) {
+            console.error("Lỗi xử lý file zip:", error);
+            UI.fileStatus.textContent = `Lỗi: ${error.message}`;
+            alert(`Đã xảy ra lỗi: ${error.message}`);
+        } finally {
+            hideLoading();
+        }
+    };
+    
+    // ===================================================================================
+    // Logic bài thi
+    // ===================================================================================
+    const startTest = () => {
+        for (const section in FILE_CONFIG) {
+            const config = FILE_CONFIG[section];
+            let allQs = appState.allQuestions[section];
+            // Sắp xếp theo độ khó cho các phần đọc và viết
+            if (config.type === 'reading' || config.type === 'writing') {
+                allQs.sort((a, b) => (a['độ khó'] || a['难度']) - (b['độ khó'] || b['难度']));
+            }
+            appState.testData[section] = shuffleArray([...allQs]).slice(0, config.count);
+            appState.userAnswers[section] = new Array(config.count).fill(null);
+        }
+        UI.welcomeScreen.classList.add('hidden');
+        UI.testScreen.classList.remove('hidden');
+        appState.currentSection = Object.keys(FILE_CONFIG)[0];
+        appState.currentQuestionIndex = 0;
+        setupNavigation();
+        renderQuestion();
+        startTimer(120);
+    };
+    
+    const startTimer = (minutes) => {
+        let seconds = minutes * 60;
+        appState.timerInterval = setInterval(() => {
+            seconds--;
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            UI.timer.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            if (seconds <= 0) {
+                clearInterval(appState.timerInterval);
+                alert("Hết giờ làm bài!");
+                submitTest();
+            }
+        }, 1000);
+    };
+
+    const setupNavigation = () => {
+        UI.testNav.innerHTML = '';
+        Object.keys(SECTION_TITLES).forEach(key => {
+            const li = document.createElement('li');
+            li.innerHTML = `<a href="#" data-section="${key}" class="block p-2 rounded-md hover:bg-gray-100 text-sm">${SECTION_TITLES[key]}</a>`;
+            UI.testNav.appendChild(li);
+        });
+        UI.testNav.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (e.target.dataset.section) {
+                navigateToSection(e.target.dataset.section);
+            }
+        });
+    };
+    
+    const navigateToSection = (sectionKey) => {
+        appState.currentSection = sectionKey;
+        appState.currentQuestionIndex = 0;
+        renderQuestion();
+    };
+
+    const navigateQuestion = (direction) => {
+        const sectionOrder = Object.keys(FILE_CONFIG);
+        const currentSectionIndex = sectionOrder.indexOf(appState.currentSection);
+        if (direction === 1) { // Next
+            if (appState.currentQuestionIndex < appState.testData[appState.currentSection].length - 1) {
+                appState.currentQuestionIndex++;
+            } else if (currentSectionIndex < sectionOrder.length - 1) {
+                appState.currentSection = sectionOrder[currentSectionIndex + 1];
+                appState.currentQuestionIndex = 0;
+            }
+        } else { // Previous
+            if (appState.currentQuestionIndex > 0) {
+                appState.currentQuestionIndex--;
+            } else if (currentSectionIndex > 0) {
+                appState.currentSection = sectionOrder[currentSectionIndex - 1];
+                appState.currentQuestionIndex = appState.testData[appState.currentSection].length - 1;
+            }
+        }
+        renderQuestion();
+    };
+    
+    // ===================================================================================
+    // Hiển thị câu hỏi
+    // ===================================================================================
+    const renderQuestion = () => {
+        const section = appState.currentSection;
+        const index = appState.currentQuestionIndex;
+        const questionData = appState.testData[section][index];
+        const sectionType = FILE_CONFIG[section].type;
+
+        UI.sectionTitle.textContent = SECTION_TITLES[section];
+        UI.qCounter.textContent = `Câu ${index + 1} / ${appState.testData[section].length}`;
+        UI.qContent.innerHTML = ''; // Clear previous content
+
+        switch(sectionType) {
+            case 'listening': renderListeningQuestion(section, questionData); break;
+            case 'speaking': renderSpeakingQuestion(section, questionData); break;
+            case 'reading': renderReadingWritingQuestion(section, questionData); break;
+            case 'writing': renderReadingWritingQuestion(section, questionData); break;
+        }
+        updateNavButtons();
+        updateNavHighlight();
+    };
+    
+    const renderListeningQuestion = (section, qData) => {
+        const userAnswer = appState.userAnswers[section][appState.currentQuestionIndex];
+        let options = [];
+        let textForAudio = '';
+        const audioButtonId = `audio-btn-${section}-${appState.currentQuestionIndex}`;
+        let contentHTML = `<div class="text-center"><button id="${audioButtonId}" class="btn btn-primary inline-flex items-center mb-6"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 mr-2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>Phát âm thanh</button></div>`;
+
+        switch(section) {
+            case 'nghe1':
+                textForAudio = qData['Câu hỏi (Hanzi)'];
+                options = shuffleArray([qData['Đáp án 1'], qData['Đáp án 2'], qData['Đáp án 3'], qData['Đáp án đúng']]);
+                break;
+            case 'nghe2':
+                 textForAudio = `${qData['Nội dung đoạn văn (Nghe)']}. ${qData['Nội dung câu hỏi']}`;
+                 options = shuffleArray([qData['Đáp án A'], qData['Đáp án B'], qData['Đáp án C'], qData['Đáp án D']]);
+                break;
+            case 'nghe3':
+                textForAudio = `${qData['Nội dung nghe (录音)']}. ${qData['Câu phán đoán (判断句)']}`;
+                options = ['对', '错'];
+                break;
+        }
+        
+        contentHTML += options.map(opt => `
+            <label class="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-blue-50 transition-colors">
+                <input type="radio" name="option" value="${opt}" class="w-5 h-5 text-blue-600" ${userAnswer === opt ? 'checked' : ''}>
+                <span class="ml-4 text-lg">${opt}</span>
+            </label>`).join('');
+
+        UI.qContent.innerHTML = contentHTML;
+        document.getElementById(audioButtonId).addEventListener('click', () => generateAudio(textForAudio, audioButtonId));
+        UI.qContent.addEventListener('change', (e) => {
+            if (e.target.type === 'radio') appState.userAnswers[section][appState.currentQuestionIndex] = e.target.value;
+        });
+    };
+
+    const renderSpeakingQuestion = (section, qData) => {
+        let contentHTML = '';
+        const userAnswer = appState.userAnswers[section][appState.currentQuestionIndex];
+        let audioTextForListener = '';
+        let audioButtonIdForListener = '';
+
+        if (section === 'noi1') {
+            const audioText = qData['Nội dung nghe (录音内容)'];
+            const audioButtonId = `audio-btn-${section}-${appState.currentQuestionIndex}`;
+            audioTextForListener = audioText;
+            audioButtonIdForListener = audioButtonId;
+            contentHTML += `<p class="text-center text-gray-600 mb-4">Nghe và nhắc lại câu sau:</p>
+             <div class="text-center mb-6">
+                <button id="${audioButtonId}" class="btn btn-primary inline-flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 mr-2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                    Phát âm thanh
+                </button>
+             </div>`;
+        } else { // noi2
+            contentHTML += `<p class="text-center text-gray-600 mb-4">Đọc to đoạn văn sau:</p>
+            <div class="p-4 bg-gray-100 rounded-lg text-xl leading-relaxed text-center">${qData['Đoạn văn (汉字)']}</div>`;
+        }
+
+        contentHTML += `
+            <div class="mt-8 flex items-center justify-center space-x-4">
+                <button id="record-btn" class="btn btn-primary bg-red-600 hover:bg-red-700 flex items-center">Ghi âm</button>
+                <button id="stop-btn" class="btn btn-secondary btn-disabled" disabled>Dừng</button>
+                ${userAnswer ? `<audio controls src="${URL.createObjectURL(userAnswer)}"></audio>` : `<p class="text-gray-500">Chưa có bản ghi</p>`}
+            </div>`;
+        
+        UI.qContent.innerHTML = contentHTML;
+
+        // Add event listeners AFTER setting innerHTML to prevent them from being removed
+        if (section === 'noi1') {
+            document.getElementById(audioButtonIdForListener).addEventListener('click', () => generateAudio(audioTextForListener, audioButtonIdForListener));
+        }
+        document.getElementById('record-btn').onclick = startRecording;
+        document.getElementById('stop-btn').onclick = stopRecording;
+    };
+
+    const renderReadingWritingQuestion = (section, qData) => {
+        const userAnswer = appState.userAnswers[section][appState.currentQuestionIndex] || "";
+        let questionHTML = '';
+
+        if(section === 'doc1') { // multiple choice
+            const options = shuffleArray([qData['答案一'], qData['答案二'], qData['答案三'], qData['正确答案']].filter(Boolean));
+            questionHTML = `<p class="font-semibold text-lg mb-4">${qData['题目']}</p><div class="space-y-3">` + options.map(opt => `
+                <label class="flex items-center p-3 rounded-lg hover:bg-indigo-100 transition-colors">
+                    <input type="radio" name="option" value="${opt}" onchange="updateAnswer('${section}', ${appState.currentQuestionIndex}, this.value)" ${userAnswer === opt ? 'checked' : ''}>
+                    <span class="ml-4 text-gray-700">${opt}</span>
+                </label>`).join('') + `</div>`;
+        } else if(section === 'doc2') { // multiple choice with passage
+             const options = shuffleArray([qData['Đáp án 1'], qData['Đáp án 2'], qData['Đáp án 3']]);
+             questionHTML = `
+                <div class="mb-4 p-4 bg-gray-100 rounded-lg"><p class="font-bold">Đọc đoạn văn sau:</p><p>${qData['Bài khóa']}</p></div>
+                <p class="font-semibold text-lg mb-4">${qData['Câu hỏi']}</p>
+                <div class="space-y-3">` + options.map(opt => `
+                <label class="flex items-center p-3 rounded-lg hover:bg-indigo-100 transition-colors">
+                    <input type="radio" name="option" value="${opt}" onchange="updateAnswer('${section}', ${appState.currentQuestionIndex}, this.value)" ${userAnswer === opt ? 'checked' : ''}>
+                    <span class="ml-4 text-gray-700">${opt}</span>
+                </label>`).join('') + `</div>`;
+        } else if (section === 'doc3') { // true/false with passage
+             questionHTML = `
+                <div class="mb-4 p-4 bg-gray-100 rounded-lg"><p class="font-bold">Đọc đoạn văn sau:</p><p>${qData['Đoạn văn']}</p></div>
+                <p class="font-semibold text-lg mb-4">${qData['Câu hỏi']}</p>
+                <div class="flex gap-4">
+                   <label class="flex items-center p-3 rounded-lg hover:bg-indigo-100">
+                       <input type="radio" name="option" value="对" onchange="updateAnswer('${section}', ${appState.currentQuestionIndex}, this.value)" ${userAnswer === '对' ? 'checked' : ''}>
+                       <span class="ml-3">Đúng (对)</span>
+                   </label>
+                   <label class="flex items-center p-3 rounded-lg hover:bg-indigo-100">
+                       <input type="radio" name="option" value="错" onchange="updateAnswer('${section}', ${appState.currentQuestionIndex}, this.value)" ${userAnswer === '错' ? 'checked' : ''}>
+                       <span class="ml-3">Sai (错)</span>
+                   </label>
+                </div>`;
+        } else if (section === 'viet1') { // fill blank
+            questionHTML = `<p class="font-semibold text-lg mb-4">${qData['Câu hỏi']}</p>
+                <input type="text" class="w-full p-2 border rounded-md" value="${userAnswer}" placeholder="Điền câu trả lời..." onchange="updateAnswer('${section}', ${appState.currentQuestionIndex}, this.value)">`;
+        } else if (section === 'viet2') { // rearrange
+            questionHTML = `
+                <p class="italic text-gray-500 mb-2">Sắp xếp các từ sau thành câu hoàn chỉnh:</p>
+                <div class="p-3 bg-yellow-100 text-yellow-800 rounded-md mb-4">${qData['Các từ đã xáo trộn']}</div>
+                <input type="text" class="w-full p-2 border rounded-md" value="${userAnswer}" placeholder="Viết lại câu hoàn chỉnh..." onchange="updateAnswer('${section}', ${appState.currentQuestionIndex}, this.value)">`;
+        } else if (section === 'viet3') { // essay
+            questionHTML = `
+                <p class="font-semibold text-lg mb-4"><b>Chủ đề: ${qData['Chủ đề']}</b><br>${qData['Nội dung đề']}</p>
+                <p class="italic text-gray-500 mb-2">Viết một đoạn văn khoảng 80 chữ về chủ đề trên.</p>
+                <textarea rows="8" class="w-full p-2 border rounded-md" placeholder="Bắt đầu viết đoạn văn..." onchange="updateAnswer('${section}', ${appState.currentQuestionIndex}, this.value)">${userAnswer}</textarea>`;
+        }
+        UI.qContent.innerHTML = questionHTML;
+    };
+    
+    window.updateAnswer = (sectionId, qIndex, value) => {
+        appState.userAnswers[sectionId][qIndex] = value;
+    };
+
+    const updateNavButtons = () => {
+        const sectionOrder = Object.keys(FILE_CONFIG);
+        const isFirst = appState.currentSection === sectionOrder[0] && appState.currentQuestionIndex === 0;
+        const isLast = appState.currentSection === sectionOrder[sectionOrder.length - 1] && appState.currentQuestionIndex === appState.testData[appState.currentSection].length - 1;
+        UI.prevBtn.disabled = isFirst;
+        UI.prevBtn.classList.toggle('btn-disabled', isFirst);
+        UI.nextBtn.classList.toggle('hidden', isLast);
+        UI.submitBtn.classList.toggle('hidden', !isLast);
+    };
+
+    const updateNavHighlight = () => {
+         document.querySelectorAll('#test-navigation a').forEach(a => {
+            a.classList.toggle('bg-blue-600', a.dataset.section === appState.currentSection);
+            a.classList.toggle('text-white', a.dataset.section === appState.currentSection);
+            a.classList.toggle('font-bold', a.dataset.section === appState.currentSection);
+        });
+    };
+
+    // ===================================================================================
+    // Ghi âm
+    // ===================================================================================
+    const startRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            appState.mediaRecorder = new MediaRecorder(stream);
+            appState.audioChunks = [];
+            appState.mediaRecorder.ondataavailable = e => appState.audioChunks.push(e.data);
+            appState.mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(appState.audioChunks, { type: 'audio/wav' });
+                appState.userAnswers[appState.currentSection][appState.currentQuestionIndex] = audioBlob;
+                renderQuestion();
+            };
+            appState.mediaRecorder.start();
+            const recordBtn = document.getElementById('record-btn');
+            recordBtn.innerHTML = `<span class="recording-indicator mr-2"></span>Đang ghi...`;
+            recordBtn.disabled = true;
+            document.getElementById('stop-btn').disabled = false;
+            document.getElementById('stop-btn').classList.remove('btn-disabled');
+        } catch (err) {
+            console.error("Lỗi microphone:", err);
+            alert("Không thể truy cập microphone. Vui lòng cấp quyền.");
+        }
+    };
+    
+    const stopRecording = () => {
+        if (appState.mediaRecorder && appState.mediaRecorder.state !== 'inactive') {
+            appState.mediaRecorder.stop();
+            appState.mediaRecorder.stream.getTracks().forEach(track => track.stop());
+        }
+    };
+
+    // ===================================================================================
+    // Nộp bài và Chấm điểm
+    // ===================================================================================
+    const submitTest = async () => {
+        // Removed confirm dialog as it can block execution in iframe environments.
+        // The user's click on the submit button is considered confirmation.
+        clearInterval(appState.timerInterval);
+        showLoading('Đang chấm điểm. Việc này có thể mất một lúc...');
+        await calculateAllScores();
+        displayResults();
+        UI.testScreen.classList.add('hidden');
+        UI.resultsScreen.classList.remove('hidden');
+        hideLoading();
+    };
+
+    async function calculateAllScores() {
+        // Listening
+        const scoreN1 = scoreSimpleMatch('nghe1', 'Đáp án đúng');
+        const scoreN2 = scoreSimpleMatch('nghe2', 'Đáp án đúng');
+        const scoreN3 = scoreSimpleMatch('nghe3', 'Đáp án');
+        appState.scores.nghe1 = { score: scoreN1, max: 100 };
+        appState.scores.nghe2 = { score: scoreN2, max: 100 };
+        appState.scores.nghe3 = { score: scoreN3, max: 100 };
+        appState.scores.listening_total = { score: roundScore((scoreN1 + scoreN2 + scoreN3) / 3), max: 100 };
+
+        // Speaking (AI scoring)
+        const scoreNoi1 = await scoreSpeaking_AI('noi1');
+        const scoreNoi2 = await scoreSpeaking_AI('noi2');
+        appState.scores.noi1 = { score: scoreNoi1, max: 100 };
+        appState.scores.noi2 = { score: scoreNoi2, max: 100 };
+        appState.scores.speaking_total = { score: roundScore((scoreNoi1 + scoreNoi2) / 2), max: 100 };
+
+        // Reading
+        const scoreD1 = scoreSimpleMatch('doc1', '正确答案');
+        const scoreD2 = scoreSimpleMatch('doc2', 'Đáp án đúng');
+        const scoreD3 = scoreSimpleMatch('doc3', 'Đáp án');
+        appState.scores.doc1 = { score: scoreD1, max: 100 };
+        appState.scores.doc2 = { score: scoreD2, max: 100 };
+        appState.scores.doc3 = { score: scoreD3, max: 100 };
+        appState.scores.reading_total = { score: roundScore((scoreD1 + scoreD2 + scoreD3) / 3), max: 100 };
+        
+        // Writing
+        const scoreV1 = await scoreWriting1_AI();
+        const scoreV2 = scoreSimpleMatch('viet2', 'Đáp án chuẩn');
+        const scoreV3 = await scoreWriting3_AI();
+        appState.scores.viet1 = { score: scoreV1, max: 100 };
+        appState.scores.viet2 = { score: scoreV2, max: 100 };
+        appState.scores.viet3 = { score: scoreV3, max: 100 };
+        appState.scores.writing_total = { score: roundScore((scoreV1 + scoreV2 + scoreV3) / 3), max: 100 };
+
+        // Final score
+        const final = (appState.scores.listening_total.score + appState.scores.speaking_total.score + appState.scores.reading_total.score + appState.scores.writing_total.score) / 4;
+        appState.scores.final = { score: roundScore(final), max: 100 };
+    }
+
+    function scoreSimpleMatch(sectionId, answerKey) {
+        const questions = appState.testData[sectionId] || [];
+        const userAnswers = appState.userAnswers[sectionId] || [];
+        if (questions.length === 0) return 0;
+        let correctCount = 0;
+        questions.forEach((q, i) => {
+            if (String(userAnswers[i] || "").trim() === String(q[answerKey] || "").trim()) {
+                correctCount++;
+            }
+        });
+        return (correctCount / questions.length) * 100;
+    }
+
+    async function scoreWriting1_AI() {
+        const questions = appState.testData['viet1'] || [];
+        const userAnswers = appState.userAnswers['viet1'] || [];
+        if (questions.length === 0) return 0;
+        let totalScore = 0;
+        const systemInstruction = `You are an HSK exam grader. For each question, evaluate the user's answer based on two criteria: 
+1. correctness_score: How similar it is in meaning to the suggested answer (0-100). 
+2. grammar_logic_score: Whether it's grammatically correct and logical on its own (0-100).
+Respond ONLY with a JSON object like {"correctness_score": value, "grammar_logic_score": value}.`;
+        for (let i = 0; i < questions.length; i++) {
+            if (!userAnswers[i]) continue;
+            const prompt = JSON.stringify({ question: questions[i]['Câu hỏi'], suggested_answer: questions[i]['Gợi ý đáp án'], user_answer: userAnswers[i] });
+            try {
+                const responseText = await callGeminiAPI(prompt, systemInstruction);
+                const scores = JSON.parse(responseText.match(/\{.*\}/s)[0]);
+                totalScore += (scores.correctness_score + scores.grammar_logic_score) / 2;
+            } catch (e) { console.error("Lỗi chấm điểm Viết 1 câu " + (i+1) + ":", e); }
+        }
+        return totalScore / questions.length;
+    }
+        
+    async function scoreWriting3_AI() {
+        const userAnswer = (appState.userAnswers['viet3'] || [])[0];
+        if (!userAnswer) return 0;
+        const question = appState.testData['viet3'][0];
+        const systemInstruction = `You are an HSK essay grader. Evaluate the essay based on the prompt on 4 criteria (0-100 each): task_response, coherence_cohesion, lexical_resource, grammatical_accuracy. Respond ONLY with a JSON object like {"task_response": v1, "coherence_cohesion": v2, "lexical_resource": v3, "grammatical_accuracy": v4}.`;
+        const prompt = JSON.stringify({ prompt: question['Nội dung đề'], essay: userAnswer });
+        try {
+            const responseText = await callGeminiAPI(prompt, systemInstruction);
+            const scores = JSON.parse(responseText.match(/\{.*\}/s)[0]);
+            return (scores.task_response + scores.coherence_cohesion + scores.lexical_resource + scores.grammatical_accuracy) / 4;
+        } catch (e) {
+            console.error("Lỗi chấm điểm Viết 3:", e);
+            return 0;
+        }
+    }
+    async function scoreSpeaking_AI(sectionId) {
+        const questions = appState.testData[sectionId] || [];
+        const userAnswers = appState.userAnswers[sectionId] || [];
+        if (questions.length === 0) return 0;
+        
+        let totalScore = 0;
+        let validAnswers = 0;
+        
+        // Xác định tên cột IPA dựa vào section
+        let ipaColumnName = '';
+        if (sectionId === 'noi1') {
+            ipaColumnName = 'Phiên âm IPA (IPA 答案)';
+        } else if (sectionId === 'noi2') {
+            ipaColumnName = 'Đáp án tham khảo (IPA)';
+        }
+        
+        const systemInstruction = `You are an HSK speaking exam grader specializing in Chinese pronunciation evaluation. 
+You need to convert the user's audio recording to text using speech recognition, then evaluate the pronunciation accuracy by comparing it to the reference IPA transcription.
+
+Evaluate based on these criteria (0-100 each):
+1. pronunciation_accuracy: How accurately the pronunciation matches the IPA reference
+2. tone_accuracy: How accurately the tones are pronounced (crucial for Chinese)  
+3. fluency: How smooth and natural the speech flow is
+4. clarity: How clear and understandable the pronunciation is
+
+Respond ONLY with a JSON object like {"pronunciation_accuracy": v1, "tone_accuracy": v2, "fluency": v3, "clarity": v4}.`;
+
+        for (let i = 0; i < questions.length; i++) {
+            const audioBlob = userAnswers[i];
+            if (!audioBlob || !(audioBlob instanceof Blob)) {
+                continue; // Bỏ qua nếu không có recording
+            }
+            
+            const referenceIPA = questions[i][ipaColumnName];
+            if (!referenceIPA) {
+                continue; // Bỏ qua nếu không có đáp án IPA
+            }
+            
+            try {
+                // Chuyển audio blob thành base64 để gửi lên API
+                const arrayBuffer = await audioBlob.arrayBuffer();
+                const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+                
+                const prompt = JSON.stringify({
+                    audio_base64: base64Audio,
+                    audio_type: 'audio/wav',
+                    reference_ipa: referenceIPA,
+                    instruction: 'Please transcribe this Chinese audio and evaluate pronunciation accuracy against the IPA reference'
+                });
+                
+                const responseText = await callGeminiAPI(prompt, systemInstruction);
+                const scores = JSON.parse(responseText.match(/\{.*\}/s)[0]);
+                
+                // Tính điểm trung bình của 4 tiêu chí
+                const avgScore = (scores.pronunciation_accuracy + scores.tone_accuracy + scores.fluency + scores.clarity) / 4;
+                totalScore += avgScore;
+                validAnswers++;
+                
+            } catch (e) {
+                console.error(`Lỗi chấm điểm ${sectionId} câu ${i+1}:`, e);
+                // Nếu lỗi, có thể cho điểm mặc định thấp hoặc bỏ qua
+                continue;
+            }
+        }
+        
+        // Nếu không có câu nào được chấm được, trả về 0
+        if (validAnswers === 0) {
+            console.warn(`Không có audio hợp lệ nào để chấm điểm cho ${sectionId}`);
+            return 0;
+        }
+        
+        return totalScore / validAnswers;
+    }
+    // ===================================================================================
+    // Hiển thị kết quả
+    // ===================================================================================
+    function displayResults() {
+        document.getElementById('results-summary').innerHTML = `
+            <p class="text-lg text-gray-600">Điểm tổng kết</p>
+            <p class="text-8xl font-bold text-indigo-600 my-2">${appState.scores.final.score}</p>`;
+        
+        const sections = [
+            { title: 'Phần Nghe', total: appState.scores.listening_total, parts: [{ name: 'Nghe 1', score: appState.scores.nghe1 }, { name: 'Nghe 2', score: appState.scores.nghe2 }, { name: 'Nghe 3', score: appState.scores.nghe3 }] },
+            { title: 'Phần Nói (Mô phỏng)', total: appState.scores.speaking_total, parts: [{ name: 'Nói 1', score: appState.scores.noi1 }, { name: 'Nói 2', score: appState.scores.noi2 }] },
+            { title: 'Phần Đọc', total: appState.scores.reading_total, parts: [{ name: 'Đọc 1', score: appState.scores.doc1 }, { name: 'Đọc 2', score: appState.scores.doc2 }, { name: 'Đọc 3', score: appState.scores.doc3 }] },
+            { title: 'Phần Viết', total: appState.scores.writing_total, parts: [{ name: 'Viết 1', score: appState.scores.viet1 }, { name: 'Viết 2', score: appState.scores.viet2 }, { name: 'Viết 3', score: appState.scores.viet3 }] }
+        ];
+        
+        document.getElementById('results-details').innerHTML = sections.map(section => `
+            <div class="p-6 border rounded-xl">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold">${section.title}</h3>
+                    <p class="text-2xl font-bold text-indigo-600">${section.total.score.toFixed(2)} / ${section.total.max}</p>
+                </div>
+                <div class="space-y-2 pl-4 border-l-2">
+                    ${section.parts.map(part => `
+                        <div class="flex justify-between items-center text-gray-700">
+                            <span>${part.name}</span>
+                            <span class="font-semibold">${part.score.score.toFixed(2)} / ${part.score.max}</span>
+                        </div>`).join('')}
+                </div>
+            </div>`).join('');
+    }
+    
+    // ===================================================================================
+    // Khởi động lại
+    // ===================================================================================
+    const resetApp = () => {
+        location.reload();
+    };
+
+    // ===================================================================================
+    // Gán sự kiện
+    // ===================================================================================
+    UI.zipInput.addEventListener('change', handleZipUpload);
+    UI.startBtn.addEventListener('click', startTest);
+    UI.prevBtn.addEventListener('click', () => navigateQuestion(-1));
+    UI.nextBtn.addEventListener('click', () => navigateQuestion(1));
+    UI.submitBtn.addEventListener('click', submitTest);
+    UI.restartBtn.addEventListener('click', resetApp);
+    </script>
+</body>
+</html>
+
+
